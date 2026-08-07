@@ -8,19 +8,24 @@ from keep_alive import keep_alive
 TARGET_VC_ID = 1449627369672540170
 
 intents = discord.Intents.default()
-intents.voice_states = True  # 確保開啟語音狀態監聽權限
+intents.voice_states = True
 bot = commands.Bot(command_prefix="!", intents=intents)
+
+# 用來防止重複觸發重連的鎖
+is_reconnecting = False
 
 async def connect_to_vc():
     """負責連線到指定語音頻道的函式"""
+    global is_reconnecting
     await bot.wait_until_ready()
     channel = bot.get_channel(TARGET_VC_ID)
     
     if not channel:
         print("❌ 找不到指定的語音頻道，請檢查 ID 是否正確！")
+        is_reconnecting = False
         return
     
-    # 【關鍵修正】強制清理所有殘留的語音連線，防止 4006 衝突
+    # 強制清理所有殘留的語音連線
     for voice in list(bot.voice_clients):
         try:
             await voice.disconnect(force=True)
@@ -32,6 +37,9 @@ async def connect_to_vc():
         print(f"✅ 成功加入語音頻道：{channel.name}")
     except Exception as e:
         print(f"⚠️ 連線失敗：{e}")
+    finally:
+        # 無論成功或失敗，解開鎖定
+        is_reconnecting = False
 
 @bot.event
 async def on_ready():
@@ -39,7 +47,6 @@ async def on_ready():
     activity = discord.Activity(type=discord.ActivityType.watching, name="🌌 今晚的星空")
     await bot.change_presence(status=discord.Status.online, activity=activity)
     
-    # 啟動時馬上連線
     bot.loop.create_task(connect_to_vc())
     
     if not check_connection.is_running():
@@ -48,22 +55,30 @@ async def on_ready():
 @tasks.loop(minutes=5)
 async def check_connection():
     """每 5 分鐘主動檢查一次連線狀態"""
+    global is_reconnecting
+    if is_reconnecting:
+        return
     channel = bot.get_channel(TARGET_VC_ID)
     if channel:
         voice = discord.utils.get(bot.voice_clients, guild=channel.guild)
         if not voice or not voice.is_connected():
             print("🔄 檢查到未連線，正在重新導向...")
+            is_reconnecting = True
             await connect_to_vc()
 
 @bot.event
 async def on_voice_state_update(member, before, after):
-    """防呆監聽：只有當機器人本尊『原本在頻道內』卻被『強行斷開/踢出』時才觸發"""
+    """嚴格防呆監聽：加入 Lock 機制防止重複觸發"""
+    global is_reconnecting
     if member == bot.user:
-        # 如果是自己主動離開或轉移，不動作
         if after.channel is not None:
             return
-        # 如果是被踢出或斷線
+        
         if before.channel is not None and after.channel is None:
+            if is_reconnecting:
+                return  # 如果已經在重新連線中了，直接忽略這次觸發
+            
+            is_reconnecting = True
             print("⚡ 機器人被移出或意外斷線，5秒後準備重新連線...")
             await asyncio.sleep(5)
             await connect_to_vc()
