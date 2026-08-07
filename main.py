@@ -4,11 +4,11 @@ import os
 import asyncio
 from keep_alive import keep_alive
 
-# 請將這裡替換成你要機器人掛機的「語音頻道 ID」
+# 你的語音頻道 ID
 TARGET_VC_ID = 1449627369672540170
 
 intents = discord.Intents.default()
-# 如果你的機器人沒有要讀取訊息，只需要預設 intents 即可
+intents.voice_states = True  # 確保開啟語音狀態監聽權限
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 async def connect_to_vc():
@@ -22,62 +22,57 @@ async def connect_to_vc():
     
     # 檢查現有的語音連線
     voice = discord.utils.get(bot.voice_clients, guild=channel.guild)
-    if voice:
-        if voice.is_connected() and voice.channel == channel:
-            return # 確實已經在同一個頻道內，不用重複連
+    if voice and voice.is_connected():
+        if voice.channel == channel:
+            return  # 已經在正確的頻道裡了，不需要重複連
         else:
-            try:
-                # 如果卡在奇怪的狀態或不同頻道，先強制清理舊連線
-                await voice.disconnect(force=True)
-            except:
-                pass
+            await voice.move_to(channel)
+            return
 
     try:
         await channel.connect()
         print(f"✅ 成功加入語音頻道：{channel.name}")
     except Exception as e:
-        print(f"⚠️ 連線失敗：{e}")
-        
+        print(f"⚠️ 連線失敗（稍後會自動重試）：{e}")
+
 @bot.event
 async def on_ready():
     print(f"🤖 登入成功：{bot.user}")
-
-    # 🌟 在這裡加上設定機器人狀態的程式碼 🌟
-    # ActivityType.playing = 正在玩
-    # ActivityType.watching = 正在觀看
-    # ActivityType.listening = 正在聆聽
     activity = discord.Activity(type=discord.ActivityType.watching, name="🌌 今晚的星空")
     await bot.change_presence(status=discord.Status.online, activity=activity)
     
     # 啟動時馬上連線
     bot.loop.create_task(connect_to_vc())
-    # 啟動定時檢查任務
+    
     if not check_connection.is_running():
         check_connection.start()
 
 @tasks.loop(minutes=5)
 async def check_connection():
-    """每 5 分鐘主動檢查一次連線狀態，應對網路波動"""
+    """每 5 分鐘主動檢查一次連線狀態"""
     channel = bot.get_channel(TARGET_VC_ID)
     if channel:
         voice = discord.utils.get(bot.voice_clients, guild=channel.guild)
         if not voice or not voice.is_connected():
-            print("🔄 偵測到斷線，正在嘗試重新連線...")
+            print("🔄 檢查到未連線，正在重新導向...")
             await connect_to_vc()
 
 @bot.event
 async def on_voice_state_update(member, before, after):
-    """監聽語音狀態：如果機器人被意外移出頻道，馬上重連"""
-    # 確認是機器人自己，且從「有頻道」變成「無頻道 (斷線)」
-    if member == bot.user and before.channel is not None and after.channel is None:
-        print("⚡ 機器人被移出或意外斷線，5秒後準備重新連線...")
-        await asyncio.sleep(5) # 給予一點緩衝時間避免連線衝突
-        await connect_to_vc()
+    """防呆監聽：只有當機器人本尊『原本在頻道內』卻被『強行斷開/踢出』時才觸發"""
+    if member == bot.user:
+        # 如果是自己主動離開或轉移，不動作
+        if after.channel is not None:
+            return
+        # 如果是被踢出或斷線
+        if before.channel is not None and after.channel is None:
+            print("⚡ 機器人被移出或意外斷線，5秒後準備重新連線...")
+            await asyncio.sleep(5)
+            await connect_to_vc()
 
 # 啟動 Web 伺服器防休眠
 keep_alive()
 
-# 啟動機器人 (強烈建議將 Token 放在環境變數中)
-# 替換 "YOUR_BOT_TOKEN" 或使用環境變數 os.environ.get("TOKEN")
-TOKEN = os.environ.get("TOKEN") or "你的機器人Token"
+# 啟動機器人
+TOKEN = os.environ.get("TOKEN")
 bot.run(TOKEN)
