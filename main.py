@@ -34,6 +34,14 @@ async def connect_to_vc():
 @bot.event
 async def on_ready():
     print(f"🤖 登入成功：{bot.user}")
+
+    # 🌟 在這裡加上設定機器人狀態的程式碼 🌟
+    # ActivityType.playing = 正在玩
+    # ActivityType.watching = 正在觀看
+    # ActivityType.listening = 正在聆聽
+    activity = discord.Activity(type=discord.ActivityType.watching, name="🌌 今晚的星空")
+    await bot.change_presence(status=discord.Status.online, activity=activity)
+    
     # 啟動時馬上連線
     bot.loop.create_task(connect_to_vc())
     # 啟動定時檢查任務
