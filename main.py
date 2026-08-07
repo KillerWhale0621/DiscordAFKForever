@@ -20,17 +20,24 @@ async def connect_to_vc():
         print("❌ 找不到指定的語音頻道，請檢查 ID 是否正確！")
         return
     
-    # 檢查是否已經在語音頻道內
+    # 檢查現有的語音連線
     voice = discord.utils.get(bot.voice_clients, guild=channel.guild)
-    if voice and voice.is_connected():
-        return
+    if voice:
+        if voice.is_connected() and voice.channel == channel:
+            return # 確實已經在同一個頻道內，不用重複連
+        else:
+            try:
+                # 如果卡在奇怪的狀態或不同頻道，先強制清理舊連線
+                await voice.disconnect(force=True)
+            except:
+                pass
 
     try:
         await channel.connect()
         print(f"✅ 成功加入語音頻道：{channel.name}")
     except Exception as e:
         print(f"⚠️ 連線失敗：{e}")
-
+        
 @bot.event
 async def on_ready():
     print(f"🤖 登入成功：{bot.user}")
