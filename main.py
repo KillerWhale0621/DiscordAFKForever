@@ -72,5 +72,5 @@ keep_alive()
 
 # 啟動機器人 (強烈建議將 Token 放在環境變數中)
 # 替換 "YOUR_BOT_TOKEN" 或使用環境變數 os.environ.get("TOKEN")
-TOKEN = os.environ.get("TOKEN") or "請填入你的機器人Token"
+TOKEN = os.environ.get("TOKEN") or "你的機器人Token"
 bot.run(TOKEN)
