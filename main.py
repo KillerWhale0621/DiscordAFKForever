@@ -18,14 +18,14 @@ async def connect_to_vc():
     """負責連線到指定語音頻道的函式"""
     global is_reconnecting
     await bot.wait_until_ready()
-    channel = bot.get_channel(TARGET_VC_ID)
+    await asyncio.sleep(3) # 給予緩衝時間避免過快交握
     
+    channel = bot.get_channel(TARGET_VC_ID)
     if not channel:
-        print("❌ 找不到指定的語音頻道，請檢查 ID 是否正確！")
+        print("❌ 找不到指定的語音頻道！")
         is_reconnecting = False
         return
     
-    # 強制清理所有殘留的語音連線
     for voice in list(bot.voice_clients):
         try:
             await voice.disconnect(force=True)
@@ -33,12 +33,18 @@ async def connect_to_vc():
             pass
 
     try:
-        await channel.connect()
+        # 增加 timeout 避免伺服器回應太慢直接爆錯
+        await asyncio.wait_for(channel.connect(), timeout=15.0)
         print(f"✅ 成功加入語音頻道：{channel.name}")
     except Exception as e:
-        print(f"⚠️ 連線失敗：{e}")
+        print(f"⚠️ 連線失敗，將在一段時間後重試：{e}")
+        # 連線失敗時，強制清理殘留物件
+        for voice in list(bot.voice_clients):
+            try:
+                await voice.disconnect(force=True)
+            except:
+                pass
     finally:
-        # 無論成功或失敗，解開鎖定
         is_reconnecting = False
 
 @bot.event
